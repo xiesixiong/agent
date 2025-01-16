@@ -25,7 +25,7 @@ from assist import CheckAssistant
 
 def read_task(task_pth):
     task = []
-    with open(task_pth,'r') as f:
+    with open(task_pth,'r',encoding="utf-8") as f:
         for t in f :
             task.append(t)
     return task
@@ -68,6 +68,9 @@ class Agent:
         with open(f"{name}的日志",'w',encoding="utf-8") as f:
             pass
 
+        agent.original_solver = agent.solver
+        agent.best_solver = agent.original_solver
+        agent.best_perfomance = float('-inf')
         # Initialize optimization history and iterations
 
         agent.action_functions = [
@@ -412,7 +415,8 @@ class Agent:
 
             son_agent = Agent(api_key=agent.api_key,goal_prompt_path="son_goal_prompt.md",own_task_pth=f'{son_agent_name}dataset.txt',father_or_son=0,name=son_agent_name)
             agent.son_agents[son_agent_name] = {"object":son_agent,"description":f"This son_agent is used to solve {task_description} "}
-            threading.Thread(son_agent.evolve())
+            thread = threading.Thread(target=son_agent.evolve())
+            thread.start()
 
             with open(f"{agent.name}的日志", 'a',encoding="utf-8") as f:
                 f.write( f"当前agent是{agent.name}正在调用函数create_son_agents，创建针对于{task_description}的子数据集，并命名子agent名字为{son_agent_name}，子数据集已创建好！为了解决{task_description}的agent已开始运行！\n\n")
@@ -593,6 +597,8 @@ class Agent:
 
                 elif tool_call['function']['name'] == "action_adjust_logic":
                     result = action_adjust_logic(**arguments)
+                    print("此时调整完代码了观察一下solver")
+                    print(action_read_logic("agent_module","Agent.solver"))
 
                 elif tool_call['function']['name'] == "action_run_code":
                     result = action_run_code(**arguments)
@@ -627,7 +633,15 @@ class Agent:
                         print(f"当前agent是{agent.name}",result[0])
 
                 elif tool_call['function']['name'] == "action_evaluate_on_task":
-                    result = action_evaluate_on_task(agent.own_task_pth,agent.solver)
+                    result, score = action_evaluate_on_task(agent.own_task_pth,agent.solver)
+
+                    if score >= agent.best_perfomance:
+                        agent.best_perfomance = score
+                        agent.best_solver = agent.solver
+                        agent.save_solver(agent.best_solver)
+                        print("新solver保存好了")
+
+
                 else:
                     raise ValueError(f"Unknown function name: {tool_call['function']['name']}")
 
@@ -657,6 +671,14 @@ class Agent:
         print(f"当前agent是{agent.name}要开始","Agent Evolve", end="\n\n")
 
         agent.evolve()
+
+    def save_solver(agent, solver_func):
+        # 保存函数代码到文件
+        solver_code = inspect.getsource(solver_func)
+        with open('best_solver.py', 'a') as f:
+            f.write(solver_code)
+            f.write('\n\n')
+            print("Saved new best solver with performance:", agent.best_perfomance)
 
     def solver(agent, task: str):
         messages = [{"role": "user", "content": f"# Your Task:\n{task}"}]
@@ -892,6 +914,7 @@ def action_adjust_logic(module_name: str, target_name: str, new_code=str, target
             setattr(module, target_name, new_target)
             getattr(module, target_name).__source__ = new_code
 
+
     elif operation == 'delete':
         if '.' in target_name:  # Class attribute
             class_name, target_name = target_name.split('.')
@@ -904,6 +927,7 @@ def action_adjust_logic(module_name: str, target_name: str, new_code=str, target
 
     else:
         raise ValueError(f"Unknown operation '{operation}'. Expected 'modify', 'add', or 'delete'.")
+
 
     return f"Successfully {operation} `{module_name}.{_target_name}`."
 
@@ -1008,22 +1032,33 @@ def action_evaluate_on_task(task_pth, solver):
     #     task_mgsm.last_test_acc = acc
     # return feedback
     result = []
+    total_score = 0
     task = read_task(task_pth)
     for t in task:
         temp_result = solver(t)
         print("执行后的结果是",result)
         completion = openai.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o",
             messages=[
                 {
                     "role": "user",
-                    "content": f"下面是大模型针对问题{t}返回的一份结果，满分十分 你认为可以打几分 {temp_result}"
+                    "content": f"下面是大模型针对问题{t}返回的一份结果，满分十分 你认为可以打几分,只返回分数值，结果以“分数：你认为的分数 原因：你认为的原因” 格式返回，大模型的结果是{temp_result}"
                 },
             ],
         )
         print(completion.choices[0].message.content)
+        # 使用正则表达式找到分数
+        match = re.search(r"分数：(\d+)", completion.choices[0].message.content)
+        if match:
+            score = int(match.group(1))
+            total_score+=score
+            print("提取的分数是:", score)
+        else:
+            total_score += 5
+            print("没有找到分数")
+
         result.append(f"input question is {t},output answer is {temp_result},The evaluation result is {completion.choices[0].message.content}")
-    return result
+    return result, total_score
 
 
 
