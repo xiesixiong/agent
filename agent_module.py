@@ -18,6 +18,7 @@ import logic
 import task_mgsm
 import threading
 from assist import CheckAssistant
+from datetime import datetime
 # #Generate a counter dictionary: By default, all dictionary values that do not exist are int 0
 # agent.action_counter = collections.defaultdict(int)
 
@@ -29,9 +30,6 @@ def read_task(task_pth):
         for t in f :
             task.append(t)
     return task
-
-
-
 
 
 
@@ -271,25 +269,7 @@ class Agent:
                     "strict": True
                 }
             },
-
-            # #第八个功能:分解问题
-            # {
-            #     "type": "function",
-            #     "function": {
-            #         "name": "split_task",
-            #         "description": "Break down a larger task into several smaller and more specific subtasks, and store these subtasks.",
-            #         "parameters": {
-            #             "type": "object",
-            #             "properties": {
-            #             },
-            #             "required": [],
-            #             "additionalProperties": False
-            #         },
-            #         "strict": True
-            #     }
-            # },
-
-            #第九个功能：让助手启动功能
+        #第九个功能：让助手启动功能
             {
                 "type": "function",
                 "function": {
@@ -339,22 +319,7 @@ class Agent:
                 }
             },
 
-            # 第十一个功能:总结所有的子答案
-            {
-                "type": "function",
-                "function": {
-                    "name": "summary",
-                    "description": "After collecting all the son-answers, summarize them into the final answer.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                        },
-                        "required": [],
-                        "additionalProperties": False
-                    },
-                    "strict": True
-                }
-            },
+
 
         ]
 
@@ -363,32 +328,6 @@ class Agent:
 
         agent.check_assistant = None
 
-    # # 这个功能是把问题进行分解，只有父亲需要分割问题，孩子不需要
-    # def split_task(agent):
-    #      if agent.father_or_son==1:
-    #          completion = openai.chat.completions.create(
-    #              model="gpt-3.5-turbo",
-    #              messages=[
-    #                  {
-    #                      "role": "user",
-    #                      "content": f"你帮我把这个问题“{agent.own_task}”分解成几个part,需要你分条罗列，给我三条就够"
-    #                  },
-    #              ],
-    #          )
-    #          print(f"当前agent是{agent.name}",completion.choices[0].message.content)
-    #          text = completion.choices[0].message.content
-    #          # 使用 split 方法按数字编号分隔文本
-    #          items = text.split('\n')
-    #
-    #          # 创建一个列表用于存储结果
-    #          agent.son_tasks = [item.strip() for item in items]
-    #
-    #          # 打印列表内容
-    #          print(f"当前agent是{agent.name}",agent.son_tasks)
-    #          return "split_task is ok!"
-    #
-    #      else:
-    #          return "you don't be allowed"
 
 
     def create_son_agents(agent,task_description,son_agent_name):
@@ -415,11 +354,21 @@ class Agent:
 
             son_agent = Agent(api_key=agent.api_key,goal_prompt_path="son_goal_prompt.md",own_task_pth=f'{son_agent_name}dataset.txt',father_or_son=0,name=son_agent_name)
             agent.son_agents[son_agent_name] = {"object":son_agent,"description":f"This son_agent is used to solve {task_description} "}
-            thread = threading.Thread(target=son_agent.evolve())
+            thread = threading.Thread(target=son_agent.evolve)
             thread.start()
 
-            with open(f"{agent.name}的日志", 'a',encoding="utf-8") as f:
-                f.write( f"当前agent是{agent.name}正在调用函数create_son_agents，创建针对于{task_description}的子数据集，并命名子agent名字为{son_agent_name}，子数据集已创建好！为了解决{task_description}的agent已开始运行！\n\n")
+            with open(f"{agent.name}的日志", 'a', encoding="utf-8") as f:
+                # 获取当前时间戳
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+                # 写入日志信息，分为多行以便更易于阅读
+                f.write(f"[{timestamp}] 当前Agent: {agent.name}\n")
+                f.write(f"  - 正在调用函数: create_son_agents\n")
+                f.write(f"  - 任务描述: {task_description}\n")
+                f.write(f"  - 子Agent名字: {son_agent_name}\n")
+                f.write(f"  - 子数据集已创建，且子Agent已开始运行!\n")
+                f.write("\n\n")  # 添加空行分隔日志条目
+
             print(( f"当前agent是{agent.name}正在调用函数create_son_agents，创建针对于{task_description}的子数据集，并命名子agent名字为{son_agent_name}，子数据集已创建好！为了解决{task_description}的agent已开始运行！\n\n"))
             return "create_son_agents is ok!"
         return "you don't be allowed"
@@ -430,33 +379,29 @@ class Agent:
     def call_son_agents(agent,son_agent_name,specific_questions):
         if agent.father_or_son == 1:
             son_agent = agent.son_agents[son_agent_name]["object"]
-            answer = son_agent.solver(specific_questions) # todo: son_agent.archived_solver; son_agent.archived_score
+            answer = son_agent.best_solver(specific_questions) # todo: son_agent.archived_solver; son_agent.archived_score
             agent.son_results.append(f"为了解决{specific_questions}这个子任务得到的方案是：{answer}")
-            with open(f"{agent.name}的日志", 'a',encoding="utf-8") as f:
-                f.write(f"当前agent是{agent.name},他正在调用函数  call_son_agents ，call的是子agent{son_agent_name}，当前子agent处理的任务是{specific_questions}，返回的结果是{answer} \n\n")
+
+            with open(f"{agent.name}的日志", 'a', encoding="utf-8") as f:
+                # 获取当前时间戳
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+                # 写入日志信息，分为多行以便更易于阅读
+                f.write(f"[{timestamp}] 当前Agent: {agent.name}\n")
+                f.write(f"  - 正在调用函数: call_son_agents\n")
+                f.write(f"  - 被调用的子Agent: {son_agent_name}\n")
+                f.write(f"  - 子Agent处理的任务: {specific_questions}\n")
+                f.write(f"  - 返回的结果: {answer}\n")
+                f.write("\n\n")  # 添加空行分隔日志条目
+
+
+
             print((f"当前agent是{agent.name},他正在调用函数  call_son_agents ，call的是子agent{son_agent_name}，当前子agent处理的任务是{specific_questions}，返回的结果是{answer} \n\n"))
             return f"当前agent是{agent.name}",f"当前子agent处理的任务是{specific_questions}，返回的结果是{answer}"
         return "you don't be allowed"
 
 
 
-    # def summary(agent):
-    #     if agent.father_or_son == 1 and agent.son_results:
-    #         completion = openai.chat.completions.create(
-    #             model="gpt-3.5-turbo",
-    #             messages=[
-    #                 {
-    #                     "role": "user",
-    #                     "content": f"我对于这个问题“{agent.own_task}”得到了一些子答案{agent.son_results}，请你帮我把这个答案总结一下"
-    #                 },
-    #             ],
-    #         )
-    #         print(f"当前agent是{agent.name}总结的答案是",completion.choices[0].message.content)
-    #         answer = completion.choices[0].message.content
-    #         agent.answer = answer
-    #
-    #         return "summary is ok!"
-    #     return "you don't be allowed"
 
 
     #基础功能，调用外界大模型
@@ -569,9 +514,8 @@ class Agent:
         #将当前的solver代码存储到自己的历史记忆中
         # agent.optimize_history.append({"role": "user", "content": first_aware_content})
         agent.optimize_history.append({"role": "user", "content": "The logic of solver:\n" + solver_logic})
-    # def call_with_assistant(self, task_input):
-    #     return self.solver(task_input)
-    #执行操作,actions可能是一系列的操作
+
+
     def execute_action(agent,actions:typing.Dict):
 
         #先记录一下是否需要重新初始化一下
@@ -579,8 +523,16 @@ class Agent:
 
         #遍历传入的actions，来执行
         for tool_call in actions['tool_calls']:
-            with open(f"{agent.name}的日志", 'a',encoding="utf-8") as f:
-                f.write(f"当前agent是{agent.name} 当前agent正在尝试调用工具（函数）：{tool_call} \n\n")
+
+            with open(f"{agent.name}的日志", 'a', encoding="utf-8") as f:
+                # 获取当前时间戳
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+                # 写入日志信息，分为多行
+                f.write(f"[{timestamp}] 当前Agent: {agent.name}\n")
+                f.write(f"  - 正在尝试调用工具: {tool_call}\n")
+                f.write("\n\n")  # 添加空行分隔日志条目
+
             print(f"当前agent是{agent.name}","当前agent正在尝试调用工具（函数）：",tool_call,end="\n\n")
 
             try:
@@ -621,10 +573,6 @@ class Agent:
                     result = agent.call_son_agents(**arguments)
 
 
-                elif tool_call['function']['name'] == "summary":
-                    result = agent.summary()
-
-
                 elif tool_call['function']['name'] == 'action_call_json_format_llm':
                     result = agent.action_call_json_format_llm(**arguments)
                     try:
@@ -633,13 +581,15 @@ class Agent:
                         print(f"当前agent是{agent.name}",result[0])
 
                 elif tool_call['function']['name'] == "action_evaluate_on_task":
-                    result, score = action_evaluate_on_task(agent.own_task_pth,agent.solver)
+                    result, score = action_evaluate_on_task(agent.own_task_pth,agent.best_solver)
 
                     if score >= agent.best_perfomance:
                         agent.best_perfomance = score
                         agent.best_solver = agent.solver
                         agent.save_solver(agent.best_solver)
                         print("新solver保存好了")
+                        print("此时的solver是这个样子的")
+                        print(action_read_logic("agent_module","Agent.solver"))
 
 
                 else:
@@ -652,8 +602,15 @@ class Agent:
                 result = "Error " + exception_stringio.getvalue()
                 exception_stringio.close()
 
-            with open(f"{agent.name}的日志", 'a',encoding="utf-8") as f:
-                f.write(f"当前agent是{agent.name} tool call result:\n, {result} ,\n\n ")
+            with open(f"{agent.name}的日志", 'a', encoding="utf-8") as f:
+                # 获取当前时间戳
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+                # 写入日志信息，格式化更清晰
+                f.write(f"[{timestamp}] 当前Agent: {agent.name}\n")
+                f.write(f"  - 工具调用结果:\n")
+                f.write(f"    {result}\n")
+                f.write("\n\n")  # 添加空行分隔日志条目
 
             print(f"当前agent是{agent.name}","tool call result:\n", result, sep="", end="\n\n")
             if is_reinit:
@@ -661,8 +618,16 @@ class Agent:
             agent.optimize_history.append({"role": "tool",
                                            "content": result,
                                             "tool_call_id": tool_call['id']})
-        with open(f"{agent.name}的日志", 'a',encoding="utf-8") as f:
-            f.write(f"当前agent是{agent.name} Action Counter: { agent.action_counter} ,\n\n ")
+
+        with open(f"{agent.name}的日志", 'a', encoding="utf-8") as f:
+            # 获取当前时间戳
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # 写入日志信息，分为多行以便更易于阅读
+            f.write(f"[{timestamp}] 当前Agent: {agent.name}\n")
+            f.write(f"  - Action Counter: {agent.action_counter}\n")
+            f.write("\n\n")  # 添加空行分隔日志条目
+
         print(f"当前agent是{agent.name}","Action Counter:", agent.action_counter, end='\n\n')
         if agent.action_counter["evolve"] >= 30:
             sys.exit(1)
@@ -678,7 +643,10 @@ class Agent:
         with open('best_solver.py', 'a') as f:
             f.write(solver_code)
             f.write('\n\n')
-            print("Saved new best solver with performance:", agent.best_perfomance)
+            f.write(f"Saved new best solver with performance:{agent.best_perfomance}")
+            f.write('\n\n')
+
+
 
     def solver(agent, task: str):
         messages = [{"role": "user", "content": f"# Your Task:\n{task}"}]
@@ -734,8 +702,16 @@ class Agent:
 
         agent.optimize_history.append(response[0])
         # print(f"当前agent是{agent.name}","执行完一次evolve后当前的历史信息里是>>>>>", agent.optimize_history, "\n\n")
-        with open(f"{agent.name}的日志", 'a',encoding="utf-8") as f:
-            f.write(f"当前agent是{agent.name}elove完毕 开始准备执行exection-action {response[0]} \n\n ")
+        with open(f"{agent.name}的日志", 'a', encoding="utf-8") as f:
+            # 获取当前时间戳
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # 写入日志信息，分为多行以便更易于阅读
+            f.write(f"[{timestamp}] 当前Agent: {agent.name}\n")
+            f.write(f"  - 完成elove任务\n")
+            f.write(f"  - 准备执行action: {response[0]}\n")
+            f.write("\n")  # 添加空行分隔日志条目
+
         print(f"当前agent是{agent.name}","开始准备执行exection-action",response[0],"\n\n")
         agent.execute_action(response[0])
 
@@ -749,8 +725,6 @@ class Agent:
 
 
 
-
-#一些必要的功能函数，方便agent调用使用
 
 #功能一：展示获取到的分析内容 到控制台上 同时返回指令告诉agent已经接受到analysis
 def action_display_analysis(analysis):
@@ -840,7 +814,6 @@ def action_read_logic(module_name: str, target_name: str):
         raise e
 
 
-#功能四：修改指定模块中的目标代码段落，都存在全局变量中
 def action_adjust_logic(module_name: str, target_name: str, new_code=str, target_type: str = 'function',
                         operation: str = 'modify'):
     """
@@ -858,7 +831,7 @@ def action_adjust_logic(module_name: str, target_name: str, new_code=str, target
         ValueError: Unknown operation
 
     Examples:
-        >>> modify_logic('agent_module', 'evolve', 'def evolve(agent):\\n    print(f"当前agent是{agent.name}","New evolve method")', target_type='function')
+        >>> modify_logic('agent_module', 'evolve', 'def evolve(agent):\\n    print("New evolve method")', target_type='function')
         >>> modify_logic('agent_module', 'evolve', '', target_type='function', operation='delete')
     """
     if module_name == "agent_module":
@@ -885,13 +858,13 @@ def action_adjust_logic(module_name: str, target_name: str, new_code=str, target
         locals_dict = {}
         exec(compile(new_code, f"running.{module_name}.{target_name}", "exec"), globals(), locals_dict)
         if '.' in target_name:
-            class_name, target_name = target_name.split('.')
-            if class_name in locals_dict:
-                new_target = getattr(locals_dict[class_name], target_name)
-                locals_dict.pop(class_name)
+            class_name_, target_name_ = target_name.split('.')
+            if class_name_ in locals_dict:
+                new_target = getattr(locals_dict[class_name_], target_name_)
+                locals_dict.pop(class_name_)
             else:
-                new_target = locals_dict[target_name]
-                locals_dict.pop(target_name)
+                new_target = locals_dict[target_name_]
+                locals_dict.pop(target_name_)
         else:
             new_target = locals_dict[target_name]
             locals_dict.pop(target_name)
@@ -914,7 +887,6 @@ def action_adjust_logic(module_name: str, target_name: str, new_code=str, target
             setattr(module, target_name, new_target)
             getattr(module, target_name).__source__ = new_code
 
-
     elif operation == 'delete':
         if '.' in target_name:  # Class attribute
             class_name, target_name = target_name.split('.')
@@ -928,8 +900,8 @@ def action_adjust_logic(module_name: str, target_name: str, new_code=str, target
     else:
         raise ValueError(f"Unknown operation '{operation}'. Expected 'modify', 'add', or 'delete'.")
 
-
     return f"Successfully {operation} `{module_name}.{_target_name}`."
+
 
 #功能五：运行指定代码
 def action_run_code(code_type: str, code: str, timeout: float = 30.0) -> str:
